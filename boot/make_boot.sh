@@ -1,0 +1,1 @@
+nasm boot.asm -f bin -o ../release/boot.bin
