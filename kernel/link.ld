@@ -12,10 +12,10 @@ SECTIONS
     }
 
     /* Wyrównanie do 8 bajtów wystarczy dla danych */
-    .rodata : ALIGN(8) { *(.rodata .rodata.*) }
-    .data   : ALIGN(8) { *(.data .data.*) }
+    .rodata : ALIGN(4096) { *(.rodata .rodata.*) }
+    .data   : ALIGN(4096) { *(.data .data.*) }
     
-    .bss : ALIGN(8) {
+    .bss : ALIGN(4096) {
         __bss_start = .;
         *(.bss .bss.*)
         *(COMMON)

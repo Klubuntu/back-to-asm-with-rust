@@ -22,7 +22,7 @@ start:
 
     ; Load kernel from disk to 0x8000
     mov ah, 0x02
-    mov al, 64           ; Try loading fewer sectors first (load 64 sectors, bytes 32KB)
+    mov al, 128           ; Try loading fewer sectors first (load 128 sectors, bytes 64KB)
     mov ch, 0
     mov cl, 2 ; Load from sector 2
     mov dh, 0
