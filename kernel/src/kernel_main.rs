@@ -62,6 +62,25 @@ pub extern "C" fn kernel_main() -> ! {
     vga_write!(17, 4, b'e', 0x0C);
     vga_write!(18, 4, b'3', 0x0C);
 
+    // Click Key 9 - Secrets
+    vga_write!(0, 4, b'C', 0x0F);
+    vga_write!(1, 4, b'l', 0x0F);
+    vga_write!(2, 4, b'i', 0x0F);
+    vga_write!(3, 4, b'c', 0x0F);
+    vga_write!(4, 4, b'k', 0x0F);
+    vga_write!(6, 4, b'K', 0x01);
+    vga_write!(7, 4, b'e', 0x01);
+    vga_write!(8, 4, b'y', 0x01);
+    vga_write!(10, 4, b'9', 0x01);
+    vga_write!(12, 4, b'-', 0x0F);
+    vga_write!(14, 4, b'S', 0x07);
+    vga_write!(15, 4, b'3', 0x07);
+    vga_write!(16, 4, b'c', 0x07);
+    vga_write!(17, 4, b'r', 0x07);
+    vga_write!(18, 4, b'E', 0x07);
+    vga_write!(19, 4, b't', 0x07);
+    vga_write!(20, 4, b's', 0x07);
+
     // Click Key 0 - Start
     vga_write!(0, 5, b'C', 0x0F);
     vga_write!(1, 5, b'l', 0x0F);

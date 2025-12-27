@@ -1,5 +1,27 @@
 use core::arch::asm;
 
+// Utils macros
+macro_rules! sleep_time { // in ms
+    ($seconds:expr) => {
+        unsafe {
+            // Przyjmujemy, że ok. 2 000 000 000 pętli to mniej więcej 1 sekunda 
+            // (wartość zależy od taktowania, w QEMU może być różnie)
+            let iterations = $seconds as u64 * 100_000; 
+            asm!(
+                "2:",
+                "nop",
+                "dec {count}",
+                "jnz 2b",
+                count = inout(reg) iterations => _,
+                options(nostack, preserves_flags)
+            );
+        }
+    };
+}
+
+
+// VGA Macros
+
 #[macro_export]
 macro_rules! vga_clear {
     ($color:expr) => {
@@ -18,17 +40,33 @@ macro_rules! vga_clear {
 }
 
 #[macro_export]
-macro_rules! vga_clear_row {
-    ($row:expr) => {
+macro_rules! vga_clear_row_animated {
+    ($row:expr, $color:expr, $ms:expr) => {
         unsafe {
-            // Czyści pierwsze 20 kolumn w danym wierszu
-            for i in 0..20 {
-                write_char_macro!(i, $row, b' ', 0x00);
+            // Przelicznik: ok. 1 000 000 nop-ów na 1 ms w QEMU
+            let delay_per_char = ($ms as u64 * 1_000_000) / 80;
+            let mut col = 0u64;
+
+            while col < 80 {
+                // Wykorzystujemy Twoje sprawdzone vga_write!
+                vga_write!(col, $row, 0x20u8, $color);
+
+                let mut count = delay_per_char;
+                if count > 0 {
+                    asm!(
+                        "5:",
+                        "nop",
+                        "dec {count}",
+                        "jnz 5b",
+                        count = inout(reg) count => _,
+                        options(nostack, preserves_flags)
+                    );
+                }
+                col += 1;
             }
         }
     };
 }
-
 #[macro_export]
 macro_rules! vga_write {
     ($col:expr, $row:expr, $char:expr, $color:expr) => {
@@ -118,6 +156,41 @@ macro_rules! poll_keyboard_unified {
                         vga_write!(5, $row, b'd', c);
                         write_char_macro!(0, $row, b'M', 0x0C);
                         write_char_macro!(1, $row, b'3', 0x0C);
+                    }
+
+                    else if scancode == 0x0A { // Klawisz 9
+                        // Welcome on board!
+                        vga_write!(0, 0, b'W', 0x04);
+                        sleep_time!(500);
+                        vga_write!(1, 0, b'e', 0x08);
+                        sleep_time!(500);
+                        vga_write!(2, 0, b'l', 0x0F);
+                        sleep_time!(500);
+                        vga_write!(3, 0, b'c', 0x0B);
+                        sleep_time!(500);
+                        vga_write!(4, 0, b'o', 0x0A);
+                        sleep_time!(500);
+                        vga_write!(5, 0, b'm', 0x02);
+                        sleep_time!(500);
+                        vga_write!(6, 0, b'e', 0x06);
+                        sleep_time!(800);
+                        vga_clear_row_animated!(0, 0x00, 1300);
+                        // sleep_time!(500);
+                        vga_write!(0, 0, b'o', 0x0F);
+                        sleep_time!(500);
+                        vga_write!(1, 0, b'n', 0x0F);
+                        sleep_time!(500);
+                        vga_write!(3, 0, b'B', 0x0F);
+                        sleep_time!(500);
+                        vga_write!(4, 0, b'0', 0x0F);
+                        sleep_time!(500);
+                        vga_write!(5, 0, b'a', 0x0F);
+                        sleep_time!(500);
+                        vga_write!(6, 0, b'R', 0x0F);
+                        sleep_time!(500);
+                        vga_write!(7, 0, b'd', 0x0F);
+
+
                     }
 
                     else if scancode == 0x0B { // Klawisz 0
