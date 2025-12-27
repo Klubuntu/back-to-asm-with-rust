@@ -2,24 +2,32 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use core::arch::{asm,naked_asm};
+use core::arch::{asm,global_asm};
+use crate::vga::{Color, ColorCode};
 
 mod shims;
 #[macro_use]
 mod macros;
+mod vga;
 mod kernel_main;
 
 
-#[unsafe(naked)]
-#[unsafe(link_section = ".text._start")]
-#[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
-    naked_asm!(
-        "mov rsp, 0x90000",
-        "sub rsp, 8",       // "Sztuczne" wyrównanie (padding)
-        "jmp kernel_main", // Skaczemy do właściwego Rusta
-    );
-}
+global_asm!(
+    r#"
+    .intel_syntax noprefix
+    .section .text._start
+    .global _start
+    _start:
+        lea rsp, [stack_top]
+        call kernel_main      /* call jest bezpieczniejsze niż jmp dla wyrównania stosu */
+        
+    .section .bss
+    .align 16
+    stack_bottom:
+        .zero 16384           /* 16 KB stosu */
+    stack_top:
+    "#
+);
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {

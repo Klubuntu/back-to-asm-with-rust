@@ -34,31 +34,50 @@ macro_rules! vga_clear {
 }
 
 #[macro_export]
-macro_rules! vga_clear_row_animated {
-    ($row:expr, $color:expr, $ms:expr) => {
-        // Przelicznik: ok. 1 000 000 nop-ów na 1 ms w QEMU
-        let delay_per_char = ($ms as u64 * 1_000_000) / 80;
-        let mut col = 0u64;
+macro_rules! vga_clear_animated {
+    // Wersja z określoną liczbą znaków
+    ($col:expr, $row:expr, $color:expr, $ms:expr, $num_chars:expr) => {
+        unsafe {
+            let mut current_col = $col as u64;
+            let mut current_row = $row as u64;
+            let num = $num_chars as u64;
+            
+            // Obliczamy opóźnienie na jeden znak
+            let delay_per_char = ($ms as u64 * 1_000_000) / num;
 
-        while col < 80 {
-            // Wykorzystujemy Twoje sprawdzone vga_write!
-            vga_write!(col, $row, 0x20u8, $color);
+            for _ in 0..num {
+                // Jeśli wyjdziemy poza szerokość ekranu, przechodzimy do nowej linii
+                if current_col >= 80 {
+                    current_col = 0;
+                    current_row += 1;
+                }
+                
+                // Czyścimy znak (0x20 to spacja)
+                vga_write!(current_col, current_row, 0x20u8, $color);
 
-            let count = delay_per_char;
-            if count > 0 {
-                asm!(
-                    "5:",
-                    "nop",
-                    "dec {count}",
-                    "jnz 5b",
-                    count = inout(reg) count => _,
-                    options(nostack, preserves_flags)
-                );
+                // Pętla opóźniająca
+                let mut c = delay_per_char;
+                if c > 0 {
+                    asm!(
+                        "2:",
+                        "nop",
+                        "dec {count}",
+                        "jnz 2b",
+                        count = inout(reg) c => _,
+                        options(nostack, preserves_flags)
+                    );
+                }
+                current_col += 1;
             }
-            col += 1;
         }
     };
+
+    // Wersja domyślna (cały rząd od podanej kolumny do końca rzędu)
+    ($col:expr, $row:expr, $color:expr, $ms:expr) => {
+        vga_clear_animated!($col, $row, $color, $ms, 80 - $col);
+    };
 }
+
 #[macro_export]
 macro_rules! vga_write {
     ($col:expr, $row:expr, $char:expr, $color:expr) => {
@@ -73,6 +92,67 @@ macro_rules! vga_write {
             val = in(reg) value,
             options(nostack, preserves_flags)
         );
+    };
+}
+
+#[macro_export]
+// print via LODSB instruction
+macro_rules! vga_print {
+    ($col:expr, $row:expr, $color:expr, $text:expr) => {
+        unsafe {
+            let vga_start = 0xb8000 + (($row * 80 + $col) * 2) as u64;
+            let bytes = $text;
+            let ptr = bytes.as_ptr();
+            let color = $color as u8;
+
+            asm!(
+                "mov ah, {clr_byte}", // Załaduj kolor do AH
+                "2:",
+                "mov al, [rsi]",      // Pobierz znak z adresu w RSI
+                "test al, al",        // Czy to null-terminator?
+                "jz 3f",              // Jeśli tak, wyjdź
+                "mov [rdi], ax",      // Zapisz AX (AL=znak, AH=kolor) do VGA
+                "add rdi, 2",         // Następna pozycja VGA
+                "add rsi, 1",         // Następny znak w pamięci
+                "jmp 2b",
+                "3:",
+                clr_byte = in(reg_byte) color,
+                in("rsi") ptr,        // Przekaż wskaźnik do tekstu
+                in("rdi") vga_start,  // Przekaż adres VGA
+                out("ax") _,          // Informujemy o użyciu AX
+                options(nostack)
+            );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! vga_print_ext {
+    ($col:expr, $row:expr, $text:expr, $colors:expr) => {
+        unsafe {
+            let vga_start = 0xb8000 + (($row * 80 + $col) * 2) as u64;
+            let text_ptr = $text.as_ptr();
+            let color_ptr = $colors.as_ptr();
+
+            asm!(
+                "2:",
+                "mov al, [rsi]",      // Pobierz znak
+                "test al, al",        // Czy koniec?
+                "jz 3f",
+                "mov ah, [rdx]",      // Pobierz kolor
+                "mov [rdi], ax",      // Zapisz do VGA
+                "add rsi, 1",
+                "add rdx, 1",
+                "add rdi, 2",
+                "jmp 2b",
+                "3:",
+                inout("rsi") text_ptr => _,   // Wejście i ignorowane wyjście
+                inout("rdx") color_ptr => _,  // To rozwiązuje Twój błąd!
+                inout("rdi") vga_start => _,
+                out("ax") _,
+                options(nostack)
+            );
+        }
     };
 }
 
@@ -113,34 +193,19 @@ macro_rules! poll_keyboard_unified {
                 // Wyświetlamy napis w zależności od klawisza
                 if scancode == 0x02 { // Klawisz 1
                     let c = 0x0A; // Zielony
-                    vga_write!(0, $row, b'R', c); 
-                    vga_write!(1, $row, b'u', c);
-                    vga_write!(2, $row, b's', c); 
-                    vga_write!(3, $row, b't', c);
-                    vga_write!(4, $row, b'e', c); 
-                    vga_write!(5, $row, b'd', c);
+                    vga_print!(0, $row, c, b"Rusted");
                     write_char_macro!(0, $row, b'M', 0x0A);
                     write_char_macro!(1, $row, b'1', 0x0A);
                 } 
                 else if scancode == 0x03 { // Klawisz 2
                     let c = 0x0E; // Żółty
-                    vga_write!(0, $row, b'R', c); 
-                    vga_write!(1, $row, b'u', c);
-                    vga_write!(2, $row, b's', c); 
-                    vga_write!(3, $row, b't', c);
-                    vga_write!(4, $row, b'e', c); 
-                    vga_write!(5, $row, b'd', c);
+                    vga_print!(0, $row, c, b"Rusted");
                     write_char_macro!(0, $row, b'M', 0x0B);
                     write_char_macro!(1, $row, b'2', 0x0B);
                 }
                 else if scancode == 0x04 { // Klawisz 3
                     let c = 0x0C; // Czerwony
-                    vga_write!(0, $row, b'R', c); 
-                    vga_write!(1, $row, b'u', c);
-                    vga_write!(2, $row, b's', c); 
-                    vga_write!(3, $row, b't', c);
-                    vga_write!(4, $row, b'e', c); 
-                    vga_write!(5, $row, b'd', c);
+                    vga_print!(0, $row, c, b"Rusted");
                     write_char_macro!(0, $row, b'M', 0x0C);
                     write_char_macro!(1, $row, b'3', 0x0C);
                 }
@@ -160,9 +225,8 @@ macro_rules! poll_keyboard_unified {
                     vga_write!(5, 0, b'm', 0x02);
                     sleep_time!(500);
                     vga_write!(6, 0, b'e', 0x06);
-                    sleep_time!(800);
-                    vga_clear_row_animated!(0, 0x00, 1300);
-                    // sleep_time!(500);
+                    sleep_time!(400);
+                    vga_clear_animated!(0, 0, 0x00, 600, 30);
                     vga_write!(0, 0, b'o', 0x0F);
                     sleep_time!(500);
                     vga_write!(1, 0, b'n', 0x0F);
@@ -176,8 +240,9 @@ macro_rules! poll_keyboard_unified {
                     vga_write!(6, 0, b'R', 0x0F);
                     sleep_time!(500);
                     vga_write!(7, 0, b'd', 0x0F);
-
-
+                    sleep_time!(300);
+                    vga_clear_animated!(0, 0, 0x00, 600, 10);
+                    vga_print!(0, 0, 0x0F, b"by Klubuntu (github.com/klubuntu)");
                 }
 
                 else if scancode == 0x0B { // Klawisz 0
