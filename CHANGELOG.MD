@@ -1,5 +1,28 @@
 ### 📝 Changes
 
+### 📝 Changes
+
+#### 2025-12-27 [23:25]
+* **Feature: Unified Keyboard Polling & State Management**
+    - Zaimplementowano makro `poll_keyboard_unified!`, które obsługuje logikę klawiatury w zależności od stanu menu.
+    - Wprowadzono system stanów (State Machine) przechowywany pod statycznym adresem `0x500` (0: Main Menu, 1: Math Menu).
+    - Dodano mechanizm "last scancode" pod adresem `0x501`, eliminujący powtarzanie akcji przy trzymaniu klawisza.
+* **Feature: Interactive Math Menu**
+    - Dodano dedykowany tryb obliczeń matematycznych (`menu_state == 1`).
+    - Zaimplementowano operacje: dodawanie, odejmowanie, mnożenie i dzielenie z dynamicznym wyświetlaniem wyników ASCII.
+    - Zintegrowano generator liczb losowych (`get_random!`) z formatowaniem dziesiętnym (obsługa dziesiątek i jedności).
+* **Feature: Secrets & Animations**
+    - Dodano sekwencję powitalną "Welcome on Board" pod klawiszem `9` w Main Menu.
+    - Wprowadzono blokadę animacji (`anim_lock`) pod adresem `0x503`, zapobiegającą nakładaniu się procesów graficznych.
+    - Dodano sygnaturę autora: `by Klubuntu (github.com/klubuntu)`.
+
+#### 2025-12-27 [23:05]
+* **Feature: PRNG (Pseudo-Random Number Generator)**
+    - Zaimplementowano generator LCG (Linear Congruential Generator) operujący na 64-bitowym ziarnie.
+    - Dodano obsługę instrukcji `rdtsc` przez ASM do inicjalizacji ziarna (seeding).
+    - Stworzono makro `get_random!`, udostępniające losowe liczby `u64` w całym kernelu.
+* **Safety**: Zastosowano operacje `wrapping`, aby uniknąć błędów przepełnienia (integer overflow) podczas generowania liczb.
+
 #### 2025-12-27 [21:40]
 * **Fix: VMA Address & Code Model**
     - Zmieniono `code-model` w `target.json` z `kernel` na `small`.
@@ -17,6 +40,13 @@
     - Zdefiniowano bezpieczny stos o rozmiarze 16 KB w sekcji `.bss`.
     - Ustawiono `RSP` za pomocą `lea rsp, [stack_top]` oraz wyrównano stos do 16 bajtów.
     - Umożliwiono bezpieczne przekazywanie tablic tymczasowych (lokalnych) bezpośrednio w argumentach makr.
+
+#### 2025-12-26
+* **Enhancement: Nuclear Reboot Sequence**
+    - Zaimplementowano wielostopniowy mechanizm restartu (F5):
+        1. Port PCI `0xCF9` (Standard QEMU).
+        2. Kontroler klawiatury `0x64` (Standard PS/2).
+        3. Wymuszenie `Triple Fault` poprzez celowe uszkodzenie tablicy IDT (`lidt [rsp]`), gwarantujące restart w każdym środowisku.
 
 ##### 🚀 Benefits of Optimizations
 * **Minimalny rozmiar binarki**: Usunięcie sekcji debugowych i komentarzy zmniejsza sporo rozmiar pliku `.bin`, co pozwala na szybsze ładowanie przez bootloader z ograniczoną liczbą sektorów.

@@ -9,7 +9,7 @@ mod shims;
 #[macro_use]
 mod macros;
 mod vga;
-mod kernel_main;
+pub mod kernel_main;
 
 
 global_asm!(
