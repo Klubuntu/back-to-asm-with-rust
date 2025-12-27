@@ -119,25 +119,25 @@ macro_rules! vga_print {
             let bytes = $text;
             let ptr = bytes.as_ptr();
             let len = bytes.len();
-            let color = $color as u8;
+            let color = ($color as u16) << 8; // Przesuń kolor do górnego bajtu
 
             asm!(
-                "mov ah, {clr_byte}", // Załaduj kolor do AH
                 "test {len}, {len}",  // Sprawdź czy długość > 0
                 "jz 3f",
                 "2:",
-                "mov al, [rsi]",      // Pobierz znak z adresu w RSI
+                "movzx rax, byte ptr [rsi]", // Pobierz znak z adresu w RSI (zero-extend)
+                "or rax, {clr}",      // Dodaj kolor (już przesunięty)
                 "mov [rdi], ax",      // Zapisz AX (AL=znak, AH=kolor) do VGA
                 "add rdi, 2",         // Następna pozycja VGA
                 "add rsi, 1",         // Następny znak w pamięci
                 "dec {len}",          // Zmniejsz licznik
                 "jnz 2b",             // Kontynuuj jeśli len > 0
                 "3:",
-                clr_byte = in(reg_byte) color,
+                clr = in(reg) color,
                 len = inout(reg) len => _,
                 in("rsi") ptr,        // Przekaż wskaźnik do tekstu
                 in("rdi") vga_start,  // Przekaż adres VGA
-                out("ax") _,          // Informujemy o użyciu AX
+                out("rax") _,         // Informujemy o użyciu RAX
                 options(nostack)
             );
         }
