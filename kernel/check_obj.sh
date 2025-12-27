@@ -1,0 +1,1 @@
+objdump -h ./target/target/debug/kernel

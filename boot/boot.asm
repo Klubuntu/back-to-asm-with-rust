@@ -22,13 +22,17 @@ start:
 
     ; Load kernel from disk to 0x8000
     mov ah, 0x02
-    mov al, 128           ; Try loading fewer sectors first (load 128 sectors, bytes 64KB)
+    mov al, 70          ; Try loading fewer sectors first (load 128 sectors, bytes 64KB)
     mov ch, 0
     mov cl, 2 ; Load from sector 2
     mov dh, 0
     mov dl, [boot_drive]
     mov bx, 0x8000
+    mov di, 60            ; Count sectors load (60)
     int 0x13
+
+
+    ; jc disk_error
     ; Don't check carry - QEMU sometimes sets it incorrectly
     
     ; Show that we loaded OK
@@ -108,6 +112,10 @@ protected_mode_start:
     ; PDT[0] -> 2MB page at 0x0 (identity map)
     mov edi, 0x3000
     mov DWORD [edi], 0x00000083  ; Present, writable, 2MB page
+
+    ; PDT[1] -> 2MB page at 0x200000 (Additional 2MB)
+    mov DWORD [edi + 8], 0x00200083 ; Maping 2MB-4MB
+    mov DWORD [edi + 16], 0x00400083 ; 4MB - 6MB (For stack)
     
     ; Enable PAE
     mov eax, cr4
@@ -131,6 +139,7 @@ protected_mode_start:
 BITS 64
 long_mode:
     ; Clear segment registers
+    cld ; Stacks up for LODSB
     xor ax, ax
     mov ds, ax
     mov es, ax

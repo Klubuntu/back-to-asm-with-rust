@@ -2,20 +2,23 @@ ENTRY(_start)
 
 SECTIONS
 {
-    /* 0x8000 jest OK dla obrazów ładowanych jako "floppy/raw" */
     . = 0x8000;
 
-    .text : {
-        /* Musimy zagwarantować, że _start jest absolutnie pierwszy */
+    .text : AT(0x8000) {
         KEEP(*(.text._start))
         *(.text .text.*)
     }
 
-    /* Wyrównanie do 8 bajtów wystarczy dla danych */
-    .rodata : ALIGN(4096) { *(.rodata .rodata.*) }
-    .data   : ALIGN(4096) { *(.data .data.*) }
+    /* Zmniejszamy wyrównanie do 16 bajtów, aby dane były zaraz po kodzie */
+    .rodata : ALIGN(16) { 
+        *(.rodata .rodata.*) 
+    }
     
-    .bss : ALIGN(4096) {
+    .data : ALIGN(16) { 
+        *(.data .data.*) 
+    }
+    
+    .bss : ALIGN(16) {
         __bss_start = .;
         *(.bss .bss.*)
         *(COMMON)
@@ -24,7 +27,8 @@ SECTIONS
 
     /DISCARD/ : {
         *(.comment)
+        *(.note*)
+        *(.debug*)    /* To wyrzuci te ścieżki src/main.rs */
         *(.eh_frame)
-        *(.note.gnu.build-id)
     }
 }

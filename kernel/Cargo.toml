@@ -7,6 +7,10 @@ edition = "2024"
 
 [profile.dev]
 panic = "abort"
+debug = false
 
 [profile.release]
 panic = "abort"
+debug = false
+strip = true         # Automatycznie usuwa tablicę symboli i debug info
+opt-level = "z"      # Optymalizacja pod kątem rozmiaru
