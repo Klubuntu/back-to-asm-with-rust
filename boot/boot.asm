@@ -22,7 +22,7 @@ start:
 
     ; Load kernel from disk to 0x8000
     mov ah, 0x02
-    mov al, 120          ; Try loading fewer sectors first (load 128 sectors, bytes 64KB)
+    mov al, 128          ; Try loading fewer sectors first (load 128 sectors, bytes 64KB)
     mov ch, 0
     mov cl, 2 ; Load from sector 2
     mov dh, 0
@@ -80,17 +80,12 @@ print_string:
 .done:
     ret
 
-; Funkcja do włączenia trybu VBE 1280x720 (nie jest wywoływana na starcie, tylko w jądrze po naciśnięciu F8)
-; get_vbe_info:
-;     mov ax, 0x4F01          ; Funkcja: Pobierz Mode Info
-;     mov cx, 0x411B          ; Tryb 1280x720, 24/32-bit z LFB
-;     mov di, 0x9000          ; Miejsce na strukturę VBE Mode Info Block
-;     int 0x10
-;
-;     ; Następnie musisz ten tryb włączyć
-;     mov ax, 0x4F02          ; Funkcja: Ustaw Mode
-;     mov bx, 0x411B          ; Ten sam kod trybu
-;     int 0x10
+; Funkcja do włączenia trybu VBE 1280x720
+enable_vbe_720p:
+    mov ax, 0x4F02          ; Funkcja: Ustaw Mode
+    mov bx, 0x411B          ; Tryb 1280x720, 24/32-bit z LFB
+    int 0x10
+    ret
 
 BITS 32
 protected_mode_start:

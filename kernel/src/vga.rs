@@ -1,4 +1,5 @@
 use core::arch::{asm};
+use crate::{vga_clear, vga_print, vga_write};
 
 
 #[allow(dead_code)]
@@ -100,23 +101,14 @@ unsafe fn load_polish_fonts() {
 
 #[unsafe(no_mangle)]
 pub fn unicode_menu() {
-    // Czyścimy ekran standardowym makrem
+    // Czyścimy ekran
     vga_clear!(0x00);
 
-    // Ładujemy glify do karty graficznej
-    unsafe { load_polish_fonts(); }
-
-    // Wyświetlamy nagłówek
-    vga_print!(0, 0, 0x0F, b"TRYB POLSKI (UTF8-MAPPED) AKTYWNY");
-
-    // Zmapowany tekst: \x01=ą, \x02=ć, \x03=ę, \x04=ł, \x05=ń, \x06=ó, \x07=ś, \x08=ź, \x09=ż
-    // Przykład: "Zażółć gęślą jaźń"
-    let line1 = b"Zaza\x09\x06\x04\x02 g\x03\x07\x04\x01 ja\x08\x05";
-    vga_print!(0, 2, 0x0E, line1);
-
-    vga_print!(0, 4, 0x0B, b"Dostepne znaki:");
-    vga_print!(0, 5, 0x0A, b"\x01 \x02 \x03 \x04 \x05 \x06 \x07 \x08 \x09");
-
+    // Nagłówek i instrukcje w czystym ASCII
+    vga_print!(0, 0, 0x0F, b"UNICODE MENU (ASCII)");
+    vga_print!(0, 2, 0x0E, b"Polskie znaki w ASCII nie beda widoczne");
+    vga_print!(0, 4, 0x0A, b"Key 0 - Back to Main Menu");
+    vga_print!(0, 6, 0x09, b"Key 1 - (brak 720p w kernelu)");
     vga_print!(0, 24, 0x70, b" Nacisnij 0, aby wrocic do menu glownego ");
 }
 

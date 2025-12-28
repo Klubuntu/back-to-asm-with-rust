@@ -2,6 +2,7 @@
 use core::arch::asm;
 use crate::macros::main_menu;
 use crate::vga::unicode_menu;
+use crate::poll_keyboard_unified;
 // use crate::vga::vga_clear_hd;
 
 static mut SEED: u64 = 12345;
@@ -38,6 +39,7 @@ pub extern "C" fn kernel_main() -> ! {
     unsafe {
         
         asm!("mov byte ptr [0x500], 0"); // Inicjalizacja menu: Main Menu
+        asm!("mov byte ptr [0x509], 0"); // Flaga 720p: 0=wyłączony
         main_menu();
 
         asm!("mov byte ptr [0x501], 0"); // Ostatni scancode

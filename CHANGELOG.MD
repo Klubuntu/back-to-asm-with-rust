@@ -1,5 +1,19 @@
 ### 📝 Changes
 
+#### 2025-12-28 [16:30]
+* **Bugfix: Unsafe Operation Warnings (E0133)**
+    - Wrapped inline `asm!()` macros and raw pointer dereferences in explicit `unsafe` blocks within `load_polish_fonts()` in `vga.rs`.
+    - Fixed Rust 2024 compatibility warnings for unsafe operations inside unsafe functions.
+* **Bugfix: Duplicate Build Target Warning**
+    - Changed `Cargo.toml` from `[lib]` to `[[bin]]` configuration, eliminating duplicate target warning for `src/main.rs`.
+    - Single binary target now builds cleanly without conflicts.
+* **Optimization: Bootloader Sector Loading**
+    - Increased kernel sector loading from 70 to 140 sectors (~71.5KB) in `boot.asm` to accommodate full Rust kernel binary.
+    - Kernel no longer truncates on load; full ~70KB binary is properly transferred to 0x8000.
+* **Build Status**:
+    - Cargo builds with zero warnings.
+    - Boot sector and kernel compile without errors.
+
 #### 2025-12-28 [15:50]
 * **Refactor: VBE Graphics Mode Handling**
     - Commented out automatic VBE 1280x720 mode initialization in `boot.asm` to prevent automatic graphics mode on boot.

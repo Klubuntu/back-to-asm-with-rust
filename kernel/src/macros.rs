@@ -284,6 +284,18 @@ macro_rules! poll_keyboard_unified {
         if scancode != last {
             unsafe { asm!("mov byte ptr [0x501], {0}", in(reg_byte) scancode); }
 
+            // Debug: pokaż ostatni scancode (również >= 0x80) w prawym górnym rogu
+            let hi = (scancode >> 4) & 0x0F;
+            let lo = scancode & 0x0F;
+            let mut hi_ch = hi + b'0';
+            if hi >= 10 { hi_ch = (hi - 10) + b'A'; }
+            let mut lo_ch = lo + b'0';
+            if lo >= 10 { lo_ch = (lo - 10) + b'A'; }
+            vga_write!(74, 0, b'S', 0x0F);
+            vga_write!(75, 0, b'C', 0x0F);
+            vga_write!(77, 0, hi_ch, 0x0E);
+            vga_write!(78, 0, lo_ch, 0x0E);
+
             // --- OBSŁUGA ALT (Make & Break) ---
             if scancode == 0x38 { // ALT Pressed
                 unsafe { asm!("mov byte ptr [0x507], 1"); }
@@ -381,7 +393,7 @@ macro_rules! poll_keyboard_unified {
                             unsafe { asm!("mov byte ptr [0x506], 1"); }
                             vga_input_setup!();
                         }
-                        else if scancode == 0x42 { // F8 - Unicode
+                        else if scancode == 0x42 || scancode == 0x07 || scancode == 0x64 || scancode == 0x0A || scancode == 0x09 || scancode == 0xF0 { // F8 - Unicode (handle set1/2/3 and 0xF0 prefix)
                             unsafe { 
                                 asm!("mov byte ptr [0x508], 1");
                                 asm!("mov byte ptr [0x500], 2"); 
@@ -389,6 +401,17 @@ macro_rules! poll_keyboard_unified {
                             unicode_menu();
                         }
                         else if scancode == 0x01 { vga_clear!(0x00); }
+                    } else if menu_state == 2 {
+                    // --- LOGIKA UNICODE MENU ---
+                    if scancode == 0x0B { // Klawisz 0 - Powrót do Main Menu
+                        main_menu();
+                    }
+                    else if scancode == 0x02 { // Klawisz 1 - 720p Demo
+                        vga_clear!(0x00);
+                        vga_print!(0, 5, 0x0C, b"Tryb 720p wymaga VM86!");
+                        vga_print!(0, 6, 0x0C, b"W kernelu nie mozna uzywac INT 0x10");
+                        vga_print!(0, 8, 0x0E, b"Nacisnij 0 aby wrocic");
+                    }
                     } else if menu_state == 1 {
                     // --- LOGIKA MATH MENU ---
                     if scancode == 0x0B { // Klawisz 0 - Powrót
