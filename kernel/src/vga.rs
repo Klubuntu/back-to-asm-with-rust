@@ -23,10 +23,12 @@ pub enum Color {
     LightWhite = 15,
 }
 
+#[allow(dead_code)]
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColorCode(u8);
 
+#[allow(dead_code)]
 impl ColorCode {
     pub const fn new(foreground: Color, background: Color) -> Self {
         Self((background as u8) << 4 | (foreground as u8))

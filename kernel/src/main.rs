@@ -1,9 +1,9 @@
 #![no_std]
 #![no_main]
+#![allow(unused_unsafe)]
 
 use core::panic::PanicInfo;
 use core::arch::{asm,global_asm};
-use crate::vga::{Color, ColorCode};
 
 mod shims;
 #[macro_use]
@@ -14,7 +14,6 @@ pub mod kernel_main;
 
 global_asm!(
     r#"
-    .intel_syntax noprefix
     .section .text._start
     .global _start
     _start:

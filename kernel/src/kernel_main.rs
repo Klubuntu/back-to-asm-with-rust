@@ -1,6 +1,5 @@
 #[warn(unused_imports)]
 use core::arch::asm;
-use crate::vga::{Color, ColorCode};
 use crate::macros::main_menu;
 
 static mut SEED: u64 = 12345;

@@ -7,10 +7,6 @@ edition = "2024"
 crate-type = ["staticlib"]
 path = "src/main.rs"
 
-[[bin]]
-name = "kernel"
-path = "src/main.rs"
-
 [dependencies]
 
 [profile.dev]

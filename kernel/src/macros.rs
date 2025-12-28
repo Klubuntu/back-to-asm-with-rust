@@ -1,3 +1,5 @@
+#![allow(unused_unsafe)]
+
 use core::arch::asm;
 
 // Utils macros
@@ -69,14 +71,14 @@ macro_rules! vga_clear_animated {
                 vga_write!(current_col, current_row, 0x20u8, $color);
 
                 // Pętla opóźniająca
-                let mut c = delay_per_char;
+                let c = delay_per_char;
                 if c > 0 {
                     asm!(
                         "2:",
                         "nop",
                         "dec {count}",
                         "jnz 2b",
-                        count = inout(reg) c => _,
+                        count = in(reg) c,
                         options(nostack, preserves_flags)
                     );
                 }
@@ -125,8 +127,8 @@ macro_rules! vga_print {
                 "test {len}, {len}",  // Sprawdź czy długość > 0
                 "jz 3f",
                 "2:",
-                "movzx rax, byte ptr [rsi]", // Pobierz znak z adresu w RSI (zero-extend)
-                "or rax, {clr}",      // Dodaj kolor (już przesunięty)
+                "movzx eax, byte ptr [rsi]", // Pobierz znak z adresu w RSI (zero-extend)
+                "or ax, {clr:x}",      // Dodaj kolor (już przesunięty)
                 "mov [rdi], ax",      // Zapisz AX (AL=znak, AH=kolor) do VGA
                 "add rdi, 2",         // Następna pozycja VGA
                 "add rsi, 1",         // Następny znak w pamięci
@@ -137,7 +139,7 @@ macro_rules! vga_print {
                 len = inout(reg) len => _,
                 in("rsi") ptr,        // Przekaż wskaźnik do tekstu
                 in("rdi") vga_start,  // Przekaż adres VGA
-                out("rax") _,         // Informujemy o użyciu RAX
+                out("ax") _,          // Informujemy o użyciu AX
                 options(nostack)
             );
         }

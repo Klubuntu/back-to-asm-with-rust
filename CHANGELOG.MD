@@ -1,5 +1,19 @@
 ### 📝 Changes
 
+#### 2025-12-28 [01:00]
+* **Code Optimizations**
+* **Build: Multiboot size flags**
+    - W `make_multiboot.sh` dodano `--gc-sections`, strip w `objcopy` oraz optymalizacje rozmiaru w `RUSTFLAGS`, usuwając konflikt `lto`/`embed-bitcode`.
+    - Dodano ścieżkę budowy kernela w trybie Multiboot (elf/bin w `release/multiboot/`).
+* **UI: Migający prostokąt (Key 4)**
+    - Animacja trzech kolorów (niebieski/czerwony/zielony) z opóźnieniem ~800ms zachowana, uproszczona bez tablic i pętli dla mniejszego kodu.
+* **Binary size**
+    - Zmniejszono narzut kodu generowanego przez pętle/zmienne w animacji, co ułatwia utrzymanie binarki ~25 KB.
+
+#### 2025-12-28 [00:30]
+* **Build: GRUB ISO script**
+    - Dodano skrypt `make_iso.sh` generujący obraz ISO z GRUB i kernel Multiboot (pliki w `release/multiboot/isodir` oraz `release/rusted.iso`).
+
 ### 📝 Changes
 
 #### 2025-12-27 [23:25]
