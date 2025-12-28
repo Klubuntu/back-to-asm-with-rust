@@ -11,6 +11,9 @@ mkdir -p ../release/multiboot
 # Compile Multiboot entry point
 nasm -f elf64 multiboot.asm -o multiboot.o || exit 1
 
+# Size-focused flags (no LTO to avoid embed-bitcode conflict)
+export RUSTFLAGS="-C opt-level=z -C codegen-units=1 -C panic=abort -C strip=symbols -C link-arg=--gc-sections -C link-arg=-zseparate-code"
+
 # Build Rust kernel as static library
 cargo +nightly build -Zbuild-std=core,compiler_builtins -Zbuild-std-features=compiler-builtins-mem --release --target=target.json --lib || exit 1
 
@@ -27,12 +30,12 @@ fi
 echo "Found kernel library: $KERNEL_LIB"
 
 # Link everything together with Multiboot
-ld -n -T link_multiboot.ld -o ../release/multiboot/kernel_multiboot.elf \
+ld -n -T link_multiboot.ld --gc-sections -o ../release/multiboot/kernel_multiboot.elf \
     multiboot.o \
     "$KERNEL_LIB" || exit 1
 
 # Create binary
-objcopy -O binary ../release/multiboot/kernel_multiboot.elf ../release/multiboot/kernel_multiboot.bin
+objcopy -O binary --strip-all --remove-section=.comment ../release/multiboot/kernel_multiboot.elf ../release/multiboot/kernel_multiboot.bin
 
 # Copy to main release folder
 cp ../release/multiboot/kernel_multiboot.elf ../release/kernel_multiboot.elf
