@@ -46,3 +46,4 @@ pub fn draw_block(col: u64, row: u64, color: u8) {
     let full_color = (color << 4) | color; 
     vga_write!(col, row, 0xDBu8, full_color);
 }
+

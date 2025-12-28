@@ -28,6 +28,16 @@ macro_rules! get_random {
     };
 }
 
+#[macro_export]
+macro_rules! set_encoding {
+    (UTF8) => {
+        unsafe { asm!("mov byte ptr [0x508], 1"); } // Flaga trybu pod nowym adresem
+    };
+    (ASCII) => {
+        unsafe { asm!("mov byte ptr [0x508], 0"); }
+    };
+}
+
 
 // VGA Macros
 
@@ -180,6 +190,15 @@ macro_rules! vga_print_ext {
 }
 
 #[macro_export]
+macro_rules! vga_input_setup {
+    () => {
+        // Rysujemy pasek inputu na dole (linia 24)
+        vga_draw_rect!(0, 24, 80, 1, 0x07); // Szary pasek
+        vga_print!(0, 24, 0x70, b" INPUT > "); // Czarny tekst na szarym
+    };
+}
+
+#[macro_export]
 macro_rules! write_char_macro {
     ($col:expr, $row:expr, $ch:expr, $color:expr) => {
         let off = (($row * 80 + $col) * 2) as u32;
@@ -216,30 +235,89 @@ macro_rules! vga_draw_rect {
 macro_rules! poll_keyboard_unified {
     ($row:expr) => {
         let scancode: u8;
-        unsafe {
-            asm!("in al, 0x60", out("al") scancode);
-        }
+        unsafe { asm!("in al, 0x60", out("al") scancode); }
 
-        // Odczyt poprzedniego stanu (używamy bezpiecznego adresu 0x501)
         let last: u8;
-        unsafe {
-            asm!("mov {0}, byte ptr [0x501]", out(reg_byte) last);
-        }
+        unsafe { asm!("mov {0}, byte ptr [0x501]", out(reg_byte) last); }
 
-        // Odczyt aktualnego menu (0 = Main, 1 = Math) (adres 0x500)
         let menu_state: u8;
-        unsafe {
-            asm!("mov {0}, byte ptr [0x500]", out(reg_byte) menu_state);
-        }
+        unsafe { asm!("mov {0}, byte ptr [0x500]", out(reg_byte) menu_state); }
+
+        let input_mode: u8;
+        unsafe { asm!("mov {0}, byte ptr [0x506]", out(reg_byte) input_mode); }
 
         if scancode != last {
-            // Zapisujemy nowy stan
-            unsafe {
-                asm!("mov byte ptr [0x501], {0}", in(reg_byte) scancode);
-            }
+            unsafe { asm!("mov byte ptr [0x501], {0}", in(reg_byte) scancode); }
 
-            if scancode < 0x80 { // Tylko naciśnięcia
-                if menu_state == 0 {
+            if scancode < 0x80 { // Make code
+                if input_mode == 1 {
+                    // --- LOGIKA TRYBU INPUT ---
+                    if scancode == 0x1C { // ENTER
+                        let len: u8;
+                        unsafe { asm!("mov {0}, byte ptr [0x505]", out(reg_byte) len); }
+                        
+                        if len > 0 {
+                            // 1. Wyświetlamy nagłówek
+                            vga_print!(0, 22, 0x0E, b"OSTATNI INPUT: \0");
+
+                            // 2. Pętla wyświetlająca znaki bezpośrednio z bufora 0x600
+                            for i in 0..len {
+                                let character: u8;
+                                let offset = 0x600 + i as u64;
+                                unsafe {
+                                    asm!("mov {0}, byte ptr [{1}]", out(reg_byte) character, in(reg) offset);
+                                }
+                                // Wypisujemy znak po znaku obok nagłówka (od kolumny 15)
+                                vga_write!(15 + i as u64, 22, character, 0x0F);
+                            }
+
+                            // 3. Czyszczenie i powrót
+                            unsafe { 
+                                asm!("mov byte ptr [0x506], 0"); 
+                                asm!("mov byte ptr [0x505], 0"); 
+                            }
+                            // Opóźnienie czyszczenia paska, żeby było widać efekt
+                            sleep_time!(500);
+                            vga_clear_animated!(0, 24, 0x00, 300, 100); 
+                        }
+                    }
+                    else if scancode == 0x01 { // ESC - Anuluj input
+                        unsafe { asm!("mov byte ptr [0x506], 0"); }
+                        vga_clear_animated!(0, 24, 0x00, 300, 100);
+                    }
+                    else if scancode == 0x0E { // BACKSPACE
+                        let mut len: u8;
+                        unsafe { asm!("mov {0}, byte ptr [0x505]", out(reg_byte) len); }
+                        if len > 0 {
+                            len -= 1;
+                            unsafe { asm!("mov byte ptr [0x505], {0}", in(reg_byte) len); }
+                            vga_write!(9 + len as u64, 24, b' ', 0x70);
+                        }
+                    }
+                    else {
+                        // Mapowanie ASCII
+                        let ascii = match scancode {
+                            0x1E => b'A', 0x30 => b'B', 0x2E => b'C', 0x20 => b'D', 0x12 => b'E',
+                            0x21 => b'F', 0x22 => b'G', 0x23 => b'H', 0x17 => b'I', 0x24 => b'J',
+                            0x25 => b'K', 0x26 => b'L', 0x32 => b'M', 0x31 => b'N', 0x18 => b'O',
+                            0x19 => b'P', 0x10 => b'Q', 0x13 => b'R', 0x1F => b'S', 0x14 => b'T',
+                            0x16 => b'U', 0x2F => b'V', 0x11 => b'W', 0x2D => b'X', 0x15 => b'Y',
+                            0x2C => b'Z', 0x39 => b' ', _ => 0,
+                        };
+                        if ascii != 0 {
+                            let mut len: u8;
+                            unsafe { asm!("mov {0}, byte ptr [0x505]", out(reg_byte) len); }
+                            if len < 60 {
+                                let offset = 0x600 + len as u64;
+                                unsafe { asm!("mov byte ptr [{addr}], {val}", addr = in(reg) offset, val = in(reg_byte) ascii); }
+                                vga_write!(9 + len as u64, 24, ascii, 0x70);
+                                unsafe { asm!("inc byte ptr [0x505]"); }
+                            }
+                        }
+                    }
+                } else {
+                    // --- LOGIKA MENU (TWOJE ISTNIEJĄCE KODY) ---
+                                    if menu_state == 0 {
                     // --- LOGIKA MAIN MENU ---
                     if scancode == 0x02 { // Klawisz 1
                         let c = 0x0A; // Zielony
@@ -262,6 +340,35 @@ macro_rules! poll_keyboard_unified {
 
                     else if scancode == 0x05 { // Klawisz 4
                         vga_clear!(0x00); // Czarny ekran
+                        $crate::vga::draw_block(0, 0, 0x02);
+                        $crate::vga::draw_block(1, 0, 0x02);
+                        $crate::vga::draw_block(2, 0, 0x03);
+                        $crate::vga::draw_block(3, 0, 0x03);
+                        $crate::vga::draw_block(4, 0, 0x04);
+                        $crate::vga::draw_block(5, 0, 0x04);
+                        $crate::vga::draw_block(6, 0, 0x05);
+                        $crate::vga::draw_block(7, 0, 0x05);
+                        $crate::vga::draw_block(8, 0, 0x06);
+                        $crate::vga::draw_block(9, 0, 0x06);
+                        $crate::vga::draw_block(10, 0, 0x07);
+                        $crate::vga::draw_block(11, 0, 0x07);
+                        $crate::vga::draw_block(12, 0, 0x08);
+                        $crate::vga::draw_block(13, 0, 0x08);
+                        $crate::vga::draw_block(14, 0, 0x09);
+                        $crate::vga::draw_block(15, 0, 0x09);
+                        $crate::vga::draw_block(16, 0, 0x0A);
+                        $crate::vga::draw_block(17, 0, 0x0A);
+                        $crate::vga::draw_block(18, 0, 0x0B);
+                        $crate::vga::draw_block(19, 0, 0x0B);
+                        $crate::vga::draw_block(20, 0, 0x0C);
+                        $crate::vga::draw_block(21, 0, 0x0C);
+                        $crate::vga::draw_block(22, 0, 0x0D);
+                        $crate::vga::draw_block(23, 0, 0x0D);
+                        $crate::vga::draw_block(24, 0, 0x0E);
+                        $crate::vga::draw_block(25, 0, 0x0E);
+                        $crate::vga::draw_block(26, 0, 0x0F);
+                        $crate::vga::draw_block(27, 0, 0x0F);
+                    
                         // Migający prostokąt: trzy kolory z opóźnieniem ~800ms (stałe, bez pętli)
                         vga_draw_rect!(10, 5, 20, 5, 0x09); // niebieski
                         sleep_time!(800);
@@ -323,6 +430,12 @@ macro_rules! poll_keyboard_unified {
                         vga_print!(0, 4, 0x0F, b"Key 9 - Random Number");
                         vga_print!(0, 5, 0x0F, b"Key 0 - Back to Main Menu");
                     }
+                    else if scancode == 0x17 { // Klawisz I
+                        unsafe {
+                            asm!("mov byte ptr [0x506], 1"); // Włącz Input Mode
+                        }
+                        vga_input_setup!();
+                    }
                     else if (scancode == 0x23 || scancode == 0x35){
                         main_menu();
                     }
@@ -336,6 +449,10 @@ macro_rules! poll_keyboard_unified {
                     }
                     else if scancode == 0x01 { // Klawisz Esc
                         vga_clear!(0x00); // Czarny ekran
+                    }
+
+                    else if scancode == 0x42 { // F8 - Reserved for future graphics mode
+                        vga_print!(0, 0, 0x0F, b"Graphics mode not available");
                     }
                 } else if menu_state == 1 {
                     // --- LOGIKA MATH MENU ---
@@ -385,47 +502,16 @@ macro_rules! poll_keyboard_unified {
                     }
                     // Tutaj możesz dodać resztę klawiszy dla Math
                 }
+                }
 
-                if scancode == 0x3F { // F5 - Reboot (zawsze działa)
-                    // 1. Reset PCI (Najskuteczniejszy w QEMU)
-                    unsafe {
-                        asm!(
-                            "out dx, al",
-                            in("dx") 0xCF9u16,
-                            in("al") 0x06u8,
-                            options(nomem, nostack)
-                        );
-                    }
-
-                    // 2. Reset przez kontroler klawiatury (to co masz w reboot_system)
-                    unsafe {
-                        asm!(
-                            "out 0x64, al",
-                            in("al") 0xFEu8,
-                            options(nomem, nostack)
-                        );
-                    }
-
-                    // 3. Triple Fault (Gwarantuje, że QEMU zareaguje)
-                    unsafe {
-                        asm!(
-                            "push 0",
-                            "push 0",
-                            "lidt [rsp]",
-                            "int 3",
-                            options(noreturn, nostack)
-                        );
-                    }
+                // F5 - Reboot (zawsze aktywny)
+                if scancode == 0x3F {
+                    unsafe { asm!("out 0x64, al", in("al") 0xFEu8); } // Fast reset
                 }
             }
         }
 
-        // Reset schowka przy puszczeniu klawisza (Break Code)
-        if scancode >= 0x80 {
-            unsafe {
-                asm!("mov byte ptr [0x501], 0");
-            }
-        }
+        if scancode >= 0x80 { unsafe { asm!("mov byte ptr [0x501], 0"); } }
     };
 }
 

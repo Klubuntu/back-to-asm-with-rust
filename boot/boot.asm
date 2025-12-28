@@ -80,6 +80,18 @@ print_string:
 .done:
     ret
 
+; Funkcja do włączenia trybu VBE 1280x720 (nie jest wywoływana na starcie, tylko w jądrze po naciśnięciu F8)
+; get_vbe_info:
+;     mov ax, 0x4F01          ; Funkcja: Pobierz Mode Info
+;     mov cx, 0x411B          ; Tryb 1280x720, 24/32-bit z LFB
+;     mov di, 0x9000          ; Miejsce na strukturę VBE Mode Info Block
+;     int 0x10
+;
+;     ; Następnie musisz ten tryb włączyć
+;     mov ax, 0x4F02          ; Funkcja: Ustaw Mode
+;     mov bx, 0x411B          ; Ten sam kod trybu
+;     int 0x10
+
 BITS 32
 protected_mode_start:
     mov ax, DATA_SEG

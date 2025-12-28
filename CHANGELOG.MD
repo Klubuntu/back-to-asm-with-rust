@@ -1,5 +1,62 @@
 ### 📝 Changes
 
+#### 2025-12-28 [15:50]
+* **Refactor: VBE Graphics Mode Handling**
+    - Commented out automatic VBE 1280x720 mode initialization in `boot.asm` to prevent automatic graphics mode on boot.
+    - Mode `0x411B` (1280x720, 24/32-bit with LFB) now requires explicit manual triggering instead of auto-initialization.
+* **Optimization**: 
+    - Removed complex graphics mode implementation to maintain system stability and text mode reliability.
+    - Kept text-based menu system as primary interface.
+* **F8 Key**: 
+    - Reserved for future graphics mode implementation (currently displays placeholder message).
+
+#### 2025-12-28 [14:58]
+* **Bugfix: Resolved Linker/Scope Error E0425**
+    - Zdefiniowano brakującą funkcję `get_font_ptr`.
+    - Dodano pierwsze bitmapy glifów (A, B, Crab) do statycznej pamięci kernela.
+* **Refactor**: 
+    - Zmieniono `draw_glyph`, aby poprawnie iterowała po 16 rzędach bitmapy, zapewniając wsparcie dla standardowych wymiarów fontu konsolowego.
+* **Feature: Software Font Renderer**
+    - Zaimplementowano funkcję `draw_glyph` do rysowania bitmap 8x16 w trybie LFB.
+    - Dodano mapowanie bitowe (bit-shifting) dla glifów, umożliwiające renderowanie znaków piksel po pikselu.
+* **Graphics**:
+    - Wprowadzono obsługę kolorów 24-bit RGB w trybie graficznym.
+    - Przygotowano bazę pod customowe fonty i emoji.
+
+#### 2025-12-28 [14:50]
+* **Strategy: UTF-8 & Graphics Roadmap**
+    - Rozważono przejście na tryb graficzny (Framebuffer) w celu obsługi emoji.
+    - Zdefiniowano potrzebę stworzenia Software Renderera dla glifów o zmiennej szerokości.
+    - Zarezerwowano adres `0x508` na flagę aktywnego kodowania znaków.
+
+#### 2025-12-28 [14:35]
+* **Feature: Modifier Key Support**
+    - Dodano obsługę kodu skanowania dla lewego klawisza CTRL (0x1D).
+    - Wprowadzono system śledzenia stanu klawiszy modyfikujących pod adresem `0x507`.
+* **Logic Update**: 
+    - Przygotowano architekturę pod obsługę kombinacji klawiszy (Combo-keys).
+* **Feature: Buffer-to-VGA Output**
+    - Zaimplementowano odczyt bufora RAM (adres 0x600) po zatwierdzeniu klawiszem Enter.
+    - Dodano dynamiczne wyświetlanie wpisanej komendy na pozycji (0, 22) przed resetem stanu.
+* **Logic Fix**: 
+    - Rozwiązano problem "znikających danych" poprzez wprowadzenie pętli iterującej po fizycznych adresach pamięci przed wyczyszczeniem licznika długości (0x505).
+
+#### 2025-12-28 [14:30]
+* **Architecture: Multi-level State Machine**
+    - Wprowadzono adres `0x506` jako flagę `INPUT_MODE`.
+    - Zaimplementowano izolację klawiatury: klawisze alfanumeryczne są procesowane tylko przy aktywnym `INPUT_MODE`.
+* **UI/UX Enhancement**: 
+    - Dodano obsługę klawisza ESC (0x01) jako wyjście z trybu wpisywania bez zapisu.
+    - Dodano obsługę Backspace (0x0E) z dynamiczną aktualizacją bufora RAM i pamięci VGA.
+* **Memory Map**:
+    - `0x500`: Menu State
+    - `0x505`: Input Length
+    - `0x506`: Input Mode Toggle (0/1)
+* **Knowledge: Keyboard Mapping Expansion**
+    - Dodano obsługę kodu skanowania dla klawisza 'I' (0x17).
+* **Development Status**: 
+    - Rozszerzono tablicę mapowania ASCII o kolejne litery alfabetu, przygotowując system pod obsługę pełnych komend tekstowych.
+
 #### 2025-12-28 [01:00]
 * **Code Optimizations**
 * **Build: Multiboot size flags**
