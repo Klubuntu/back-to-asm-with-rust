@@ -10,6 +10,7 @@ pub mod vga;
 pub mod shims;
 pub mod kernel_main;
 pub mod fs;
+pub mod editor;
 
 pub use crate::kernel_main::kernel_main;
 

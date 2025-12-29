@@ -153,16 +153,8 @@ macro_rules! vga_input_setup {
 #[macro_export]
 macro_rules! write_char_macro {
     ($col:expr, $row:expr, $ch:expr, $color:expr) => {
-        let off = (($row * 80 + $col) * 2) as u32;
-        let val = (($color as u16) << 8) | ($ch as u16);
-        unsafe {
-            asm!(
-                "mov word ptr [0xb8000 + {off:e}], {val:x}",
-                off = in(reg) off,
-                val = in(reg) val,
-                options(nostack) // Kluczowe: informujemy, że nie ruszamy stosu
-            );
-        }
+        // Redirect to safe runtime function which performs bounds checks.
+        $crate::vga::write_char($col as u64, $row as u64, $ch as u8, $color as u8);
     };
 }
 
@@ -515,7 +507,10 @@ macro_rules! poll_keyboard_unified {
                             unsafe { 
                                 asm!("mov {0}, byte ptr [0x510]", out(reg_byte) sel);
                                 let dir_entry_ptr = ($crate::fs::fat16::ROOT_DIR_START as *mut $crate::fs::fat16::Fat16DirEntry).add(sel as usize);
-                                $crate::fs::fat16::fat16_read(&(*dir_entry_ptr).name);
+                                // Otwórz plik w edytorze
+                                $crate::editor::edit_file(&(*dir_entry_ptr).name);
+                                // Powrót do MC po zamknięciu edytora
+                                $crate::fs::fat16::fat16_mc();
                             }
                             }
                         }

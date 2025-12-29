@@ -49,7 +49,12 @@ pub fn draw_block(col: u64, row: u64, color: u8) {
 }
 
 pub fn write_char(col: u64, row: u64, ch: u8, color: u8) {
-    let offset = ((row * 80 + col) * 2) as u64;
+    // Bounds-check to avoid writing outside VGA text buffer (80x25)
+    const SCREEN_COLS: u64 = 80;
+    const SCREEN_ROWS: u64 = 25;
+    if col >= SCREEN_COLS || row >= SCREEN_ROWS { return; }
+
+    let offset = ((row * SCREEN_COLS + col) * 2) as u64;
     let value = ((color as u16) << 8) | (ch as u16);
     unsafe {
         asm!(
@@ -78,8 +83,25 @@ pub fn clear(color: u8) {
 pub fn print_bytes(col: u64, row: u64, color: u8, bytes: &[u8]) {
     let mut c = col;
     for &b in bytes {
+        // write_char already bounds-checks; break if we hit end of line
+        if c >= 80 { break; }
         write_char(c, row, b, color);
         c += 1;
+    }
+}
+
+pub fn set_cursor(col: u16, row: u16) {
+    const SCREEN_COLS: u16 = 80;
+    const SCREEN_ROWS: u16 = 25;
+    if col >= SCREEN_COLS || row >= SCREEN_ROWS { return; }
+    let pos: u16 = row.wrapping_mul(SCREEN_COLS).wrapping_add(col);
+    let low = (pos & 0xFF) as u8;
+    let high = ((pos >> 8) & 0xFF) as u8;
+    unsafe {
+        asm!("out dx, al", in("dx") 0x3D4u16, in("al") 0x0Fu8, options(nostack, preserves_flags));
+        asm!("out dx, al", in("dx") 0x3D5u16, in("al") low, options(nostack, preserves_flags));
+        asm!("out dx, al", in("dx") 0x3D4u16, in("al") 0x0Eu8, options(nostack, preserves_flags));
+        asm!("out dx, al", in("dx") 0x3D5u16, in("al") high, options(nostack, preserves_flags));
     }
 }
 

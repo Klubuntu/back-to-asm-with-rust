@@ -10,6 +10,7 @@ mod shims;
 mod macros;
 mod vga;
 mod fs;
+mod editor;
 pub mod kernel_main;
 
 
