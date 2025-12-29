@@ -1,5 +1,5 @@
 use core::arch::{asm};
-use crate::{vga_clear, vga_print, vga_write};
+// use crate::{vga_clear, vga_print, vga_write};
 
 
 #[allow(dead_code)]
@@ -46,6 +46,41 @@ pub fn draw_block(col: u64, row: u64, color: u8) {
     // Ustawiamy ten sam kolor dla znaku i tła, aby uzyskać jednolity prostokąt
     let full_color = (color << 4) | color; 
     vga_write!(col, row, 0xDBu8, full_color);
+}
+
+pub fn write_char(col: u64, row: u64, ch: u8, color: u8) {
+    let offset = ((row * 80 + col) * 2) as u64;
+    let value = ((color as u16) << 8) | (ch as u16);
+    unsafe {
+        asm!(
+            "mov word ptr [0xb8000 + {off:e}], {val:x}",
+            off = in(reg) offset,
+            val = in(reg) value,
+            options(nostack, preserves_flags)
+        );
+    }
+}
+
+pub fn clear(color: u8) {
+    let fill_value = ((color as u16) << 8) | 0x20u16;
+    unsafe {
+        asm!(
+            "cld",
+            "rep stosw",
+            inout("rcx") 80 * 25 => _,
+            inout("rdi") 0xb8000 => _,
+            in("ax") fill_value,
+            options(nostack, preserves_flags)
+        );
+    }
+}
+
+pub fn print_bytes(col: u64, row: u64, color: u8, bytes: &[u8]) {
+    let mut c = col;
+    for &b in bytes {
+        write_char(c, row, b, color);
+        c += 1;
+    }
 }
 
 // VGA MODE
@@ -99,6 +134,7 @@ unsafe fn load_polish_fonts() {
     }
 }
 
+#[cfg(feature = "unicode")]
 #[unsafe(no_mangle)]
 pub fn unicode_menu() {
     // Czyścimy ekran
@@ -110,5 +146,13 @@ pub fn unicode_menu() {
     vga_print!(0, 4, 0x0A, b"Key 0 - Back to Main Menu");
     vga_print!(0, 6, 0x09, b"Key 1 - (brak 720p w kernelu)");
     vga_print!(0, 24, 0x70, b" Nacisnij 0, aby wrocic do menu glownego ");
+}
+
+#[cfg(not(feature = "unicode"))]
+#[unsafe(no_mangle)]
+pub fn unicode_menu() {
+    vga_clear!(0x00);
+    vga_print!(0, 0, 0x0E, b"Unicode menu disabled in this build");
+    vga_print!(0, 2, 0x07, b"Enable feature 'unicode' to restore it.");
 }
 

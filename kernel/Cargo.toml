@@ -6,6 +6,7 @@ edition = "2024"
 [lib]
 name = "kernel"
 path = "src/lib.rs"
+crate-type = ["staticlib"]
 
 [[bin]]
 name = "kernel"
@@ -21,4 +22,10 @@ debug = false
 panic = "abort"
 debug = false
 strip = true         # Automatycznie usuwa tablicę symboli i debug info
-opt-level = "z"      # Optymalizacja pod kątem rozmiaru
+opt-level = "s"      # Balans: mniejszy rozmiar i lepsza stabilność
+lto = "thin"        # Łagodniejsze LTO – mniej agresywne łączenie
+codegen-units = 1    # Zazwyczaj daje mniejszy bin, akceptujemy
+
+[features]
+default = ["unicode"]
+unicode = []

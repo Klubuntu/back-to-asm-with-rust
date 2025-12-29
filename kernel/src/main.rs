@@ -9,6 +9,7 @@ mod shims;
 #[macro_use]
 mod macros;
 mod vga;
+mod fs;
 pub mod kernel_main;
 
 

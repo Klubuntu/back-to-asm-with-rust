@@ -8,7 +8,7 @@
 
 ## Kompilacja
 
-### Kernel z Multiboot
+### Kernel z Multiboot (Multiboot2)
 ```bash
 ./make_multiboot.sh
 ```
@@ -55,26 +55,37 @@ qemu-system-x86_64 -kernel kernel_multiboot.elf
 - Bootable ISO
 - Uruchamia: `qemu-system-x86_64 -cdrom rusted.iso`
 
-## Struktura nagłówka Multiboot
+## Struktura nagłówka Multiboot2
 
 ```asm
+; Multiboot2 header (używany przez ten projekt)
 section .multiboot
-align 4
-    dd 0x1BADB002              ; Magic number
-    dd 0x00000000              ; Flags
-    dd -(0x1BADB002 + 0x00000000) ; Checksum
+align 8
+multiboot2_header:
+    dd 0xE85250D6                                ; Magic (Multiboot2)
+    dd 0                                         ; Arch: i386
+    dd multiboot2_header_end - multiboot2_header ; Header length
+    dd -(0xE85250D6 + 0 + (multiboot2_header_end - multiboot2_header)) ; Checksum
+
+    ; End tag
+    dw 0
+    dw 0
+    dd 8
+multiboot2_header_end:
 ```
 
-- **Magic number**: `0x1BADB002` - identyfikacja Multiboot
-- **Flags**: `0x00000000` - brak specjalnych flag
-- **Checksum**: suma magic + flags + checksum = 0
+- Magic: `0xE85250D6` — Multiboot2
+- Header musi znaleźć się w pierwszych 8KB pliku i być poprawnie wyrównany
+- Ten projekt używa Multiboot2, nie Multiboot1
 
 ## Debugging
 
-Sprawdź czy ELF ma poprawny nagłówek Multiboot:
+Sprawdź czy ELF ma poprawny nagłówek Multiboot2 (ten projekt używa MB2):
 ```bash
-grub-file --is-x86-multiboot kernel_multiboot.elf && echo "OK" || echo "FAIL"
+grub-file --is-x86-multiboot2 kernel_multiboot.elf && echo "OK" || echo "FAIL"
 ```
+
+Uwaga: komenda `--is-x86-multiboot` sprawdza Multiboot1. Dla naszego pliku ELF (Multiboot2) zwróci `FAIL`, co jest spodziewane.
 
 Zobacz strukturę pliku:
 ```bash

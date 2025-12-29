@@ -44,17 +44,7 @@ macro_rules! set_encoding {
 #[macro_export]
 macro_rules! vga_clear {
     ($color:expr) => {
-        let fill_value = (($color as u16) << 8) | (0x20u16); // 0x20 to spacja
-        unsafe {
-            asm!(
-                "cld",           // Wyczyść flagę kierunku (zwiększanie EDI)
-                "rep stosw",     // Powtarzaj 'store word' (AX -> [EDI])
-                inout("rcx") 80 * 25 => _, // Licznik powtórzeń (CX/RCX)
-                inout("rdi") 0xb8000 => _, // Adres docelowy (DI/RDI)
-                in("ax") fill_value,       // Wartość do wpisania
-                options(nostack, preserves_flags)
-            );
-        }
+        $crate::vga::clear($color as u8);
     };
 }
 
@@ -106,19 +96,7 @@ macro_rules! vga_clear_animated {
 #[macro_export]
 macro_rules! vga_write {
     ($col:expr, $row:expr, $char:expr, $color:expr) => {
-        let offset = (($row * 80 + $col) * 2) as u64;
-        let value = (($color as u16) << 8) | ($char as u16);
-        
-        unsafe {
-            asm!(
-                // Używamy bezpośredniego adresu 0xb8000
-                // {off:e} wymusza użycie 32-bitowej części rejestru (np. eax zamiast rax)
-                "mov word ptr [0xb8000 + {off:e}], {val:x}",
-                off = in(reg) offset,
-                val = in(reg) value,
-                options(nostack, preserves_flags)
-            );
-        }
+        $crate::vga::write_char($col as u64, $row as u64, $char as u8, $color as u8);
     };
 }
 
@@ -126,33 +104,7 @@ macro_rules! vga_write {
 // print via LODSB instruction
 macro_rules! vga_print {
     ($col:expr, $row:expr, $color:expr, $text:expr) => {
-        unsafe {
-            let vga_start = 0xb8000 + (($row * 80 + $col) * 2) as u64;
-            let bytes = $text;
-            let ptr = bytes.as_ptr();
-            let len = bytes.len();
-            let color = ($color as u16) << 8; // Przesuń kolor do górnego bajtu
-
-            asm!(
-                "test {len}, {len}",  // Sprawdź czy długość > 0
-                "jz 3f",
-                "2:",
-                "movzx eax, byte ptr [rsi]", // Pobierz znak z adresu w RSI (zero-extend)
-                "or ax, {clr:x}",      // Dodaj kolor (już przesunięty)
-                "mov [rdi], ax",      // Zapisz AX (AL=znak, AH=kolor) do VGA
-                "add rdi, 2",         // Następna pozycja VGA
-                "add rsi, 1",         // Następny znak w pamięci
-                "dec {len}",          // Zmniejsz licznik
-                "jnz 2b",             // Kontynuuj jeśli len > 0
-                "3:",
-                clr = in(reg) color,
-                len = inout(reg) len => _,
-                in("rsi") ptr,        // Przekaż wskaźnik do tekstu
-                in("rdi") vga_start,  // Przekaż adres VGA
-                out("ax") _,          // Informujemy o użyciu AX
-                options(nostack)
-            );
-        }
+        $crate::vga::print_bytes($col as u64, $row as u64, $color as u8, $text);
     };
 }
 
@@ -311,21 +263,49 @@ macro_rules! poll_keyboard_unified {
                     if scancode == 0x1C { // ENTER
                         let len: u8;
                         unsafe { asm!("mov {0}, byte ptr [0x505]", out(reg_byte) len); }
-                        
+                        let input_ctx: u8;
+                        unsafe { asm!("mov {0}, byte ptr [0x511]", out(reg_byte) input_ctx); }
+
                         if len > 0 {
-                            vga_print!(0, 22, 0x0E, b"OSTATNI INPUT: \0");
-                            for i in 0..len {
-                                let character: u8;
-                                let offset = 0x600 + i as u64;
-                                unsafe { asm!("mov {0}, byte ptr [{1}]", out(reg_byte) character, in(reg) offset); }
-                                vga_write!(15 + i as u64, 22, character, 0x0F);
+                            if input_ctx == 1 {
+                                // Tworzenie pliku z nazwy wpisanej w buforze 0x600
+                                let mut name_buf = [b' '; 8];
+                                let count: u8 = if len > 8 { 8 } else { len };
+                                let mut idx: u8 = 0;
+                                while idx < count {
+                                    let c: u8;
+                                    let off = 0x600 + idx as u64;
+                                    unsafe { asm!("mov {0}, byte ptr [{1}]", out(reg_byte) c, in(reg) off); }
+                                    let uc = if c >= b'a' && c <= b'z' { c - 32 } else { c };
+                                    name_buf[idx as usize] = uc;
+                                    idx += 1;
+                                }
+                                unsafe {
+                                    $crate::fs::fat16::fat16_create_file(&name_buf);
+                                    asm!("mov byte ptr [0x506], 0"); // wyjscie z input
+                                    asm!("mov byte ptr [0x505], 0"); // reset dlugosci
+                                    asm!("mov byte ptr [0x511], 0"); // reset kontekstu
+                                }
+                                vga_print!(0, 22, 0x0A, b"Plik utworzony");
+                                sleep_time!(250);
+                                vga_clear!(0x00);
+                                $crate::fs::fat16::fat16_mc();
+                            } else {
+                                // Domyślna prezentacja ostatniego inputu
+                                vga_print!(0, 22, 0x0E, b"OSTATNI INPUT: \0");
+                                for i in 0..len {
+                                    let character: u8;
+                                    let offset = 0x600 + i as u64;
+                                    unsafe { asm!("mov {0}, byte ptr [{1}]", out(reg_byte) character, in(reg) offset); }
+                                    vga_write!(15 + i as u64, 22, character, 0x0F);
+                                }
+                                unsafe { 
+                                    asm!("mov byte ptr [0x506], 0"); 
+                                    asm!("mov byte ptr [0x505], 0"); 
+                                }
+                                sleep_time!(500);
+                                vga_clear_animated!(0, 24, 0x00, 300, 100);
                             }
-                            unsafe { 
-                                asm!("mov byte ptr [0x506], 0"); 
-                                asm!("mov byte ptr [0x505], 0"); 
-                            }
-                            sleep_time!(500);
-                            vga_clear_animated!(0, 24, 0x00, 300, 100); 
                         }
                     }
                     else if scancode == 0x01 { // ESC
@@ -340,6 +320,21 @@ macro_rules! poll_keyboard_unified {
                             unsafe { asm!("mov byte ptr [0x505], {0}", in(reg_byte) len); }
                             vga_write!(9 + len as u64, 24, b' ', 0x70);
                         }
+                    }
+                    else if scancode == 0x47 { // HOME -> Mini-Commander z trybu input
+                        unsafe {
+                            asm!("mov byte ptr [0x510], 0"); // reset wyboru
+                            asm!("mov byte ptr [0x506], 0"); // wyjscie z input mode
+                            asm!("mov byte ptr [0x500], 3"); // stan: Mini-Commander
+                        }
+                        vga_clear!(0x00);
+                        $crate::fs::fat16::fat16_mc();
+                    }
+                    else if scancode == 0x47 { // HOME BTN
+                        unsafe { 
+                            asm!("mov byte ptr [0x510], 0"); // Resetujemy wybór na pierwszy element (indeks 0)
+                        }
+                        $crate::fs::fat16::fat16_mc();
                     }
                     else if scancode != 0x38 { // Mapowanie ASCII + POLSKIE
                         let ascii = if alt_pressed == 1 {
@@ -362,9 +357,16 @@ macro_rules! poll_keyboard_unified {
                                 0x25 => b'K', 0x26 => b'L', 0x32 => b'M', 0x31 => b'N', 0x18 => b'O',
                                 0x19 => b'P', 0x10 => b'Q', 0x13 => b'R', 0x1F => b'S', 0x14 => b'T',
                                 0x16 => b'U', 0x2F => b'V', 0x11 => b'W', 0x2D => b'X', 0x15 => b'Y',
-                                0x2C => b'Z', 0x39 => b' ', _ => 0,
+                                0x2C => b'Z', 0x39 => b' ', 
+                                0x02 => b'1', 0x03 => b'2', 0x04 => b'3', 0x05 => b'4', 0x06 => b'5',
+                                0x07 => b'6', 0x08 => b'7', 0x09 => b'8', 0x0A => b'9', 0x0B => b'0',
+                                0x0C => b'-', 0x0D => b'=', 0x1A => b'[', 0x1B => b']', 0x27 => b';',
+                                0x28 => b'\'', 0x29 => b'`', 0x2B => b'\\', 0x33 => b',', 0x34 => b'.',
+                                0x35 => b'/',
+                                _ => 0,
                             }
                         };
+                        
                         if ascii != 0 {
                             let mut len: u8;
                             unsafe { asm!("mov {0}, byte ptr [0x505]", out(reg_byte) len); }
@@ -382,7 +384,9 @@ macro_rules! poll_keyboard_unified {
                         if scancode == 0x02 { vga_print!(0, $row, 0x0A, b"Rusted M1"); } 
                         else if scancode == 0x03 { vga_print!(0, $row, 0x0E, b"Rusted M2"); }
                         else if scancode == 0x04 { vga_print!(0, $row, 0x0C, b"Rusted M3"); }
-                        else if scancode == 0x05 { /* Logika draw_rect i bloków... */ }
+                        else if scancode == 0x05 { // Key 4 - Line (rysuj poziomą linię)
+                            vga_draw_rect!(0, 12, 80, 1, 0x02);
+                        }
                         else if scancode == 0x0A { /* Logika Secrets... */ }
                         else if scancode == 0x32 { // M - Math
                             unsafe { asm!("mov byte ptr [0x500], 1"); }
@@ -393,6 +397,13 @@ macro_rules! poll_keyboard_unified {
                             unsafe { asm!("mov byte ptr [0x506], 1"); }
                             vga_input_setup!();
                         }
+                        else if scancode == 0x47 { // HOME - Mini-Commander
+                            unsafe {
+                                asm!("mov byte ptr [0x510], 0"); // zaznaczenie na pierwszy element
+                                asm!("mov byte ptr [0x500], 3");  // stan: Mini-Commander
+                            }
+                            $crate::fs::fat16::fat16_mc();
+                        }
                         else if scancode == 0x42 || scancode == 0x07 || scancode == 0x64 || scancode == 0x0A || scancode == 0x09 || scancode == 0xF0 { // F8 - Unicode (handle set1/2/3 and 0xF0 prefix)
                             unsafe { 
                                 asm!("mov byte ptr [0x508], 1");
@@ -401,65 +412,118 @@ macro_rules! poll_keyboard_unified {
                             unicode_menu();
                         }
                         else if scancode == 0x01 { vga_clear!(0x00); }
+                    } else if menu_state == 1 {
+                        // --- LOGIKA MATH MENU ---
+                        if scancode == 0x0B { // Klawisz 0 - Powrót
+                            main_menu();
+                        }
+                        else if scancode == 0x02 { // Klawisz 1 w Math
+                            vga_print!(0, 10, 0x0A, b"Addition selected!");
+                            let add_result = 2 + 2;
+                            vga_print!(0, 11, 0x0F, b"2 + 2 = ");
+                            let res_char = (add_result as u8) + b'0';
+                            vga_write!(8, 11, res_char, 0x0F);
+                        } 
+                        else if scancode == 0x03 { // Klawisz 2 w Math
+                            vga_print!(0, 10, 0x0E, b"Subtraction selected!");
+                            let sub_result = 5 - 3;
+                            vga_print!(0, 11, 0x0F, b"5 - 3 = ");
+                            let res_char = (sub_result as u8) + b'0';
+                            vga_write!(8, 11, res_char, 0x0F);
+                        }
+                        else if scancode == 0x04 { // Klawisz 3 w Math
+                            vga_print!(0, 10, 0x0C, b"Multiplication selected!");
+                            let mul_result = 3 * 4;
+                            vga_print!(0, 11, 0x0F, b"3 * 4 = ");
+                            let res_char = (mul_result as u8) + b'0';
+                            vga_write!(8, 11, res_char, 0x0F);
+                        }
+                        else if scancode == 0x05 { // Klawisz 4 w Math
+                            vga_print!(0, 10, 0x09, b"Division selected!");
+                            let div_result = 8 / 2;
+                            vga_print!(0, 11, 0x0F, b"8 / 2 = ");
+                            let res_char = (div_result as u8) + b'0';
+                            vga_write!(8, 11, res_char, 0x0F);
+                        }
+                        else if scancode == 0x0A { // Klawisz 9 w Math
+                            let random_number = (get_random!() % 100) as u8; // Zakres 0-99
+                            let tens = random_number / 10;
+                            let ones = random_number % 10;
+
+                            vga_print!(0, 10, 0x07, b"Random Number: ");
+                            let mut col = 15;
+                            if tens > 0 {
+                                vga_write!(col, 10, tens + b'0', 0x07);
+                                col += 1;
+                            }
+                            vga_write!(col, 10, ones + b'0', 0x07);
+                        }
+                        // Tutaj możesz dodać resztę klawiszy dla Math
                     } else if menu_state == 2 {
                     // --- LOGIKA UNICODE MENU ---
-                    if scancode == 0x0B { // Klawisz 0 - Powrót do Main Menu
-                        main_menu();
-                    }
-                    else if scancode == 0x02 { // Klawisz 1 - 720p Demo
-                        vga_clear!(0x00);
-                        vga_print!(0, 5, 0x0C, b"Tryb 720p wymaga VM86!");
-                        vga_print!(0, 6, 0x0C, b"W kernelu nie mozna uzywac INT 0x10");
-                        vga_print!(0, 8, 0x0E, b"Nacisnij 0 aby wrocic");
-                    }
-                    } else if menu_state == 1 {
-                    // --- LOGIKA MATH MENU ---
-                    if scancode == 0x0B { // Klawisz 0 - Powrót
-                        main_menu();
-                    }
-                    else if scancode == 0x02 { // Klawisz 1 w Math
-                        vga_print!(0, 10, 0x0A, b"Addition selected!");
-                        let add_result = 2 + 2;
-                        vga_print!(0, 11, 0x0F, b"2 + 2 = ");
-                        let res_char = (add_result as u8) + b'0';
-                        vga_write!(8, 11, res_char, 0x0F);
-                    } 
-                    else if scancode == 0x03 { // Klawisz 2 w Math
-                        vga_print!(0, 10, 0x0E, b"Subtraction selected!");
-                        let sub_result = 5 - 3;
-                        vga_print!(0, 11, 0x0F, b"5 - 3 = ");
-                        let res_char = (sub_result as u8) + b'0';
-                        vga_write!(8, 11, res_char, 0x0F);
-                    }
-                    else if scancode == 0x04 { // Klawisz 3 w Math
-                        vga_print!(0, 10, 0x0C, b"Multiplication selected!");
-                        let mul_result = 3 * 4;
-                        vga_print!(0, 11, 0x0F, b"3 * 4 = ");
-                        let res_char = (mul_result as u8) + b'0';
-                        vga_write!(8, 11, res_char, 0x0F);
-                    }
-                    else if scancode == 0x05 { // Klawisz 4 w Math
-                        vga_print!(0, 10, 0x09, b"Division selected!");
-                        let div_result = 8 / 2;
-                        vga_print!(0, 11, 0x0F, b"8 / 2 = ");
-                        let res_char = (div_result as u8) + b'0';
-                        vga_write!(8, 11, res_char, 0x0F);
-                    }
-                    else if scancode == 0x0A { // Klawisz 9 w Math
-                        let random_number = (get_random!() % 100) as u8; // Zakres 0-99
-                        let tens = random_number / 10;
-                        let ones = random_number % 10;
-
-                        vga_print!(0, 10, 0x07, b"Random Number: ");
-                        let mut col = 15;
-                        if tens > 0 {
-                            vga_write!(col, 10, tens + b'0', 0x07);
-                            col += 1;
+                        if scancode == 0x0B { // Klawisz 0 - Powrót do Main Menu
+                            main_menu();
                         }
-                        vga_write!(col, 10, ones + b'0', 0x07);
+                        else if scancode == 0x02 { // Klawisz 1 - 720p Demo
+                            vga_clear!(0x00);
+                            vga_print!(0, 5, 0x0C, b"Tryb 720p wymaga VM86!");
+                            vga_print!(0, 6, 0x0C, b"W kernelu nie mozna uzywac INT 0x10");
+                            vga_print!(0, 8, 0x0E, b"Nacisnij 0 aby wrocic");
+                        }
+                    
+                    } else if menu_state == 3 { // Tryb Mini-Commandera
+                        if scancode == 0x48 { // STRZALKA W GORE
+                            // Dekrementuj tylko gdy zaznaczenie > 0
+                            let sel: u8;
+                            unsafe { asm!("mov {0}, byte ptr [0x510]", out(reg_byte) sel); }
+                            if sel > 0 { unsafe { asm!("dec byte ptr [0x510]"); } }
+                            $crate::fs::fat16::refresh_mc_list();
+                        }
+                        else if scancode == 0x50 { // STRZALKA W DOL
+                            // Inkrementuj tylko, gdy sel+1 < liczby plikow
+                            let files_cnt: u8; let sel: u8;
+                            unsafe {
+                                asm!("mov {0}, byte ptr [0x512]", out(reg_byte) files_cnt);
+                                asm!("mov {0}, byte ptr [0x510]", out(reg_byte) sel);
+                            }
+                            if files_cnt > 0 {
+                                let next = sel.wrapping_add(1);
+                                if next < files_cnt { unsafe { asm!("inc byte ptr [0x510]"); } }
+                            }
+                            $crate::fs::fat16::refresh_mc_list();
+                        }
+                        else if scancode == 0x41 { // F7 - Utwórz plik
+                            vga_draw_rect!(9, 7, 62, 10, 0x07); // szara ramka
+                            vga_draw_rect!(10, 8, 60, 8, 0x01); // granatowe wnętrze
+                            vga_print!(12, 9, 0x1F, b" UTWORZ PLIK ");
+                            vga_print!(12, 11, 0x1F, b"Nazwa (8 znakow, A-Z/0-9):");
+                            vga_print!(0, 24, 0x70, b" NAME > ");
+                            unsafe {
+                                asm!("mov byte ptr [0x511], 1"); // kontekst: tworzenie pliku
+                                asm!("mov byte ptr [0x505], 0");  // reset dlugosci
+                                asm!("mov byte ptr [0x506], 1");  // tryb input
+                            }
+                        }
+                        else if scancode == 0x1C { // ENTER - Otwórz zaznaczony (gdy istnieją pliki)
+                            let files_cnt: u8;
+                            unsafe { asm!("mov {0}, byte ptr [0x512]", out(reg_byte) files_cnt); }
+                            if files_cnt == 0 {
+                                // Brak plików: ignoruj ENTER
+                                vga_print!(2, 22, 0x0E, b"Brak plikow - uzyj F7 aby utworzyc");
+                            } else {
+                            let sel: u8;    
+                            unsafe { 
+                                asm!("mov {0}, byte ptr [0x510]", out(reg_byte) sel);
+                                let dir_entry_ptr = ($crate::fs::fat16::ROOT_DIR_START as *mut $crate::fs::fat16::Fat16DirEntry).add(sel as usize);
+                                $crate::fs::fat16::fat16_read(&(*dir_entry_ptr).name);
+                            }
+                            }
+                        }
+                        else if scancode == 0x01 { // ESC - Powrót
+                            unsafe { asm!("mov byte ptr [0x500], 0"); }
+                            main_menu();
+                        }
                     }
-                    // Tutaj możesz dodać resztę klawiszy dla Math
-                }
                 }
 
                 // F5 - Reboot (zawsze aktywny)
@@ -470,7 +534,7 @@ macro_rules! poll_keyboard_unified {
         }
 
         if scancode >= 0x80 { unsafe { asm!("mov byte ptr [0x501], 0"); } }
-    };
+    }
 }
 
 #[unsafe(no_mangle)]

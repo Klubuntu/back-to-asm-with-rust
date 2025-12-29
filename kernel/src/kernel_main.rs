@@ -2,7 +2,6 @@
 use core::arch::asm;
 use crate::macros::main_menu;
 use crate::vga::unicode_menu;
-use crate::poll_keyboard_unified;
 // use crate::vga::vga_clear_hd;
 
 static mut SEED: u64 = 12345;

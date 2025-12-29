@@ -1,1 +1,1 @@
-objdump -h ./target/target/debug/kernel
+objdump -h ./target/target/release/kernel
