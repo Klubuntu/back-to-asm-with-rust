@@ -1,5 +1,28 @@
 ### 📝 Changes
 
+
+#### 2025-12-29 [22:00]
+* **Fix: Editor stability and bounds**
+    - Naprawiono zapisy do pamięci VGA powodujące crash przy otwieraniu edytora — `draw_editor()` oraz wszystkie makra zapisu VGA zostały przejrzane i ograniczone do obszaru 80x25.
+    - Wprowadzono `CONTENT_COL_OFFSET` i `CONTENT_WIDTH` w `kernel/src/editor.rs`, dzięki czemu rysowanie treści i numerów linii nie wychodzi poza granice ekranu.
+    - Poprawiono logikę kursora, zawijanie i przesuwanie (`move_cursor_left`, `move_cursor_right`) oraz zabezpieczono `insert_char`, `delete_char`, `backspace` przed indeksacją poza buforem.
+
+* **Feature: File I/O integration (FAT16 <-> Editor)**
+    - `edit_file()` zmienione tak, by przyjmować nazwę pliku jako `&[u8; 8]` i `load_file()` teraz ładuje zawartość pliku z RAMDISKu FAT16 do bufora edytora.
+    - Zmieniono `save_file()` w edytorze, aby używać istniejącej funkcji `fat16::fat16_save()` i zapisywać aktualny bufor jako plik w RAMDISK.
+
+* **Safety: VGA API & macros**
+    - `vga::write_char()` zyskało sprawdzenie granic (80x25) — niepoprawne zapisy są ignorowane zamiast nadpisywać pamięć.
+    - Makro `write_char_macro!` zostało zastąpione wywołaniem `vga::write_char(...)` aby centralnie kontrolować walidację zapisu.
+    - Dodano `vga::set_cursor()` do sterowania kursorem tekstowym (z walidacją współrzędnych).
+
+* **Misc: Build script and helpers**
+    - `make_kernel.sh` zaktualizowany, aby wymusić `rustup` nightly + `rust-src`, wykonać `cargo clean` przed budową i poprawnie wygenerować `release/kernel.bin` (zapobiegać starym binarkom podczas testów edytora).
+
+#### 2025-12-29 [20:00]
+* **Feature: FAT16 RAMDISK support**
+    - Dodano wsparcie dla FAT16 w ramdisk (ładowanie i zapisy plików w pamięci RAM).
+
 #### 2025-12-28 [16:30]
 * **Bugfix: Unsafe Operation Warnings (E0133)**
     - Wrapped inline `asm!()` macros and raw pointer dereferences in explicit `unsafe` blocks within `load_polish_fonts()` in `vga.rs`.
@@ -84,8 +107,6 @@
 #### 2025-12-28 [00:30]
 * **Build: GRUB ISO script**
     - Dodano skrypt `make_iso.sh` generujący obraz ISO z GRUB i kernel Multiboot (pliki w `release/multiboot/isodir` oraz `release/rusted.iso`).
-
-### 📝 Changes
 
 #### 2025-12-27 [23:25]
 * **Feature: Unified Keyboard Polling & State Management**
